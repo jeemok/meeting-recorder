@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}meeting-recorder{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --fg: #1a1a1a; --bg: #fafafa; --muted: #6b7280;
+            --accent: #2563eb; --border: #e5e7eb; --card: #ffffff;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root { --fg: #e5e7eb; --bg: #0f172a; --muted: #9ca3af;
+                    --accent: #60a5fa; --border: #1f2937; --card: #111827; }
+        }
+        * { box-sizing: border-box; }
+        body {
+            font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            color: var(--fg); background: var(--bg);
+            margin: 0; padding: 24px; max-width: 960px; margin: 0 auto;
+        }
+        h1, h2, h3 { line-height: 1.25; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        nav { display: flex; gap: 12px; align-items: center;
+              padding-bottom: 16px; border-bottom: 1px solid var(--border);
+              margin-bottom: 24px; }
+        nav .brand { font-weight: 600; }
+        .muted { color: var(--muted); }
+        .card { background: var(--card); border: 1px solid var(--border);
+                border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px 12px;
+                 border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; color: var(--muted); font-size: 12px;
+             text-transform: uppercase; letter-spacing: 0.05em; }
+        input[type=text], input[type=datetime-local], textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+            border-radius: 6px; background: var(--card); color: var(--fg);
+            font: inherit;
+        }
+        textarea { resize: vertical; }
+        button, .btn {
+            display: inline-block; padding: 6px 12px;
+            background: var(--accent); color: white; border: none;
+            border-radius: 6px; cursor: pointer; font: inherit;
+        }
+        button.secondary, .btn.secondary {
+            background: transparent; color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+        .field { margin-bottom: 12px; }
+        label { display: block; font-size: 13px; color: var(--muted);
+                margin-bottom: 4px; }
+        .row { display: flex; gap: 12px; }
+        .row > * { flex: 1; }
+        .speaker-row { display: grid; grid-template-columns: 80px 1fr;
+                       gap: 8px; align-items: center; margin-bottom: 6px; }
+        .tag { display: inline-block; padding: 2px 8px; background: var(--border);
+               border-radius: 999px; font-size: 12px; margin-right: 4px; }
+        pre.transcript { white-space: pre-wrap; font: 14px/1.6 ui-monospace,
+                         SFMono-Regular, Menlo, monospace; }
+    </style>
+</head>
+<body>
+    <nav>
+        <span class="brand"><a href="/">meeting-recorder</a></span>
+        <span class="muted">local · private · open source</span>
+    </nav>
+    {% block content %}{% endblock %}
+</body>
+</html>

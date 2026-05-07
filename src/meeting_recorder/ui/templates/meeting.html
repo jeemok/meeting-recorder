@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ m.title }} · meeting-recorder{% endblock %}
+{% block content %}
+
+<p><a href="/">← all meetings</a></p>
+
+<form method="post" action="/m/{{ m.id }}">
+    <div class="card">
+        <div class="field">
+            <label>Title</label>
+            <input type="text" name="title" value="{{ m.title }}">
+        </div>
+
+        <div class="row">
+            <div class="field">
+                <label>Started at</label>
+                <input type="datetime-local" name="started_at"
+                       value="{{ m.started_at.strftime('%Y-%m-%dT%H:%M') }}">
+            </div>
+            <div class="field">
+                <label>Ended at</label>
+                <input type="datetime-local" name="ended_at"
+                       value="{{ m.ended_at.strftime('%Y-%m-%dT%H:%M') if m.ended_at else '' }}">
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Tags (comma-separated)</label>
+            <input type="text" name="tags" value="{{ m.tags|join(', ') }}">
+        </div>
+
+        <div class="field">
+            <label>Speakers (rename anonymous diarization labels)</label>
+            {% for label, name in m.speakers.items() %}
+            <div class="speaker-row">
+                <code>Speaker {{ label }}</code>
+                <input type="text" name="speaker_{{ label }}" value="{{ name }}"
+                       placeholder="e.g. Jane Doe">
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Summary
+            <span class="muted" style="font-size: 12px;">
+                {% if m.summary_model %}({{ m.summary_model }}){% endif %}
+            </span>
+        </h2>
+        <textarea name="summary" rows="6">{{ m.summary }}</textarea>
+    </div>
+
+    <div class="card">
+        <h2>Action items</h2>
+        <p class="muted">One per line.</p>
+        <textarea name="action_items" rows="5">{% for a in m.action_items %}{{ a }}
+{% endfor %}</textarea>
+    </div>
+
+    <div class="card">
+        <h2>Notes</h2>
+        <textarea name="notes" rows="5">{{ m.notes }}</textarea>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <button type="submit">Save</button>
+        <button type="submit" class="secondary"
+                formaction="/m/{{ m.id }}/summarize">Re-run summary</button>
+    </div>
+</form>
+
+<div class="card">
+    <h2>Transcript</h2>
+    <pre class="transcript">{% for u in m.utterances -%}
+[{{ '%02d:%02d:%02d'|format((u.start // 3600)|int, ((u.start % 3600) // 60)|int, (u.start % 60)|int) }}]
+{{- ' ' }}{{ m.speakers.get(u.speaker) or ('Speaker ' ~ u.speaker) }}: {{ u.text }}
+{% endfor %}</pre>
+</div>
+{% endblock %}
