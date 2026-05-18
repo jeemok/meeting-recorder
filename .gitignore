@@ -1,19 +1,32 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
-build/
-dist/
-.venv/
-venv/
+# Swift / SwiftPM
+.build/
+.swiftpm/
+*.xcodeproj/
+mac/.build/
+mac/MeetingRecorder.app/
+mac/.swiftpm/
+Package.resolved
+
+# Secrets and user config
 .env
 config.yaml
+
+# Recorded meetings
 meetings/
 !meetings/.gitkeep
+
+# Audio artifacts
 *.wav
 *.mp3
 *.m4a
+
+# Build outputs
+*.dmg
+
+# Python diarization sidecar venv
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS
 .DS_Store
-.pytest_cache/
-.ruff_cache/
-.coverage

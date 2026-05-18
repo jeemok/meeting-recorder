@@ -1,67 +1,54 @@
-.PHONY: help install install-dev install-diarization serve dev record devices suggest summarize list doctor test lint clean
+.PHONY: help build build-release build-release-signed dmg reinstall run clean install-diarization diarize-check trust
 
-VENV := .venv
-BIN  := $(VENV)/bin
-MR   := $(BIN)/meeting-recorder
+APP        := mac/MeetingRecorder.app
+PY_VENV    := .venv
+PY_BIN     := $(PY_VENV)/bin
 
 help:
-	@echo "Common targets:"
-	@echo "  make install            create .venv and install package (editable)"
-	@echo "  make install-dev        also install dev extras (pytest, ruff)"
-	@echo "  make install-diarization also install pyannote/torch extras"
-	@echo "  make serve              start the web UI"
-	@echo "  make dev                start the web UI with --reload"
-	@echo "  make record TITLE='...' start a recording"
-	@echo "  make devices            list audio input devices"
-	@echo "  make suggest ID=...     follow-up questions for an existing meeting"
-	@echo "  make summarize ID=...   (re-)summarize an existing meeting"
-	@echo "  make list               list saved meetings"
-	@echo "  make doctor             run environment checks"
-	@echo "  make test               run pytest"
-	@echo "  make lint               run ruff"
-	@echo "  make clean              remove .venv and caches"
+	@echo "Targets:"
+	@echo "  make build                 swift build (debug) → mac/MeetingRecorder.app"
+	@echo "  make build-release         swift build (release)"
+	@echo "  make build-release-signed  release + codesign (uses stable identity if 'make trust' was run)"
+	@echo "  make dmg                   build-release-signed + package mac/MeetingRecorder-<version>.dmg"
+	@echo "  make reinstall             quit app, rebuild, replace /Applications/MeetingRecorder.app, relaunch"
+	@echo "  make trust                 create a stable self-signed identity so TCC remembers permissions"
+	@echo "  make run                   build (debug) and launch the app"
+	@echo "  make install-diarization   create .venv + install pyannote.audio"
+	@echo "  make diarize-check         verify the diarization sidecar can import pyannote"
+	@echo "  make clean                 remove build artifacts"
 
-$(VENV):
-	python3 -m venv $(VENV)
+build:
+	cd mac && ./build.sh debug
 
-install: $(VENV)
-	$(BIN)/pip install -e .
+build-release:
+	cd mac && ./build.sh release
 
-install-dev: $(VENV)
-	$(BIN)/pip install -e ".[dev]"
+build-release-signed:
+	cd mac && ./build.sh release sign
 
-install-diarization: $(VENV)
-	$(BIN)/pip install -e ".[diarization]"
+dmg:
+	mac/scripts/make_dmg.sh
 
-serve:
-	$(MR) serve
+reinstall:
+	mac/scripts/reinstall.sh
 
-dev:
-	$(MR) serve --reload
+trust:
+	mac/scripts/setup_signing.sh
 
-record:
-	$(MR) record $(if $(TITLE),--title "$(TITLE)",)
+run: build
+	open $(APP)
 
-devices:
-	$(MR) devices
+# Diarization sidecar venv. Only needed if you enable speaker diarization
+# in Settings → Transcription. Everything else runs natively in Swift.
+$(PY_VENV):
+	python3 -m venv $(PY_VENV)
+	$(PY_BIN)/pip install --upgrade pip
 
-suggest:
-	$(MR) suggest $(ID)
+install-diarization: $(PY_VENV)
+	$(PY_BIN)/pip install "pyannote.audio>=3.1.1" "torch>=2.1" "torchaudio>=2.1"
 
-summarize:
-	$(MR) summarize $(ID)
-
-list:
-	$(MR) list
-
-doctor:
-	$(MR) doctor
-
-test:
-	$(BIN)/pytest
-
-lint:
-	$(BIN)/ruff check src tests
+diarize-check: $(PY_VENV)
+	$(PY_BIN)/python mac/Resources/diarize_sidecar.py --check
 
 clean:
-	rm -rf $(VENV) .pytest_cache **/__pycache__
+	rm -rf mac/.build mac/MeetingRecorder.app mac/MeetingRecorder-*.dmg $(PY_VENV) .pytest_cache .ruff_cache

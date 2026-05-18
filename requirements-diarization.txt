@@ -1,0 +1,7 @@
+# Dependencies for the speaker-diarization sidecar at
+# mac/Resources/diarize_sidecar.py. Everything else is native Swift.
+#
+# Install with: make install-diarization
+pyannote.audio>=3.1.1
+torch>=2.1
+torchaudio>=2.1

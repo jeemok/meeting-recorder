@@ -1,115 +1,103 @@
 # Meeting Recorder
 
-A local, privacy-first meeting recorder that **does not join your meetings**.
-It captures audio from your machine (microphone + system audio), transcribes it
-locally with Whisper, identifies speakers, and uses **your own LLM provider**
-(Claude by default) for summarization and real-time question suggestions.
-
-Recordings are stored as plain Markdown files with YAML frontmatter, so they're
-easy to grep, version, edit by hand, or sync to your notes app.
-
-## Features
-
-| Capability | Module | Notes |
-|---|---|---|
-| Mic + system audio capture | `audio/` | Cross-platform mic; macOS system audio via BlackHole |
-| Local speech-to-text | `transcription/` | `faster-whisper`, runs offline |
-| Speaker diarization | `diarization/` | `pyannote.audio` (optional, gracefully degrades) |
-| Speaker re-labeling | `speakers/` | Map `Speaker A` → real names; persists across re-opens |
-| Real-time question suggestions | `llm/realtime.py` | Streams rolling transcript to Claude during the call |
-| Post-call AI summary | `llm/summarize.py` | Decisions, action items, follow-ups |
-| Markdown storage | `storage/` | Editable: title, datetime range, tags, speaker map, notes |
-| Web UI for editing | `ui/` | Tiny FastAPI app to browse/edit meeting markdown files |
-| CLI | `cli.py` | `record`, `summarize`, `list`, `serve` |
-
-Everything runs on your machine. The only outbound network call is to your
-chosen LLM provider, and only if you opt into summarization / real-time
+A native macOS meeting recorder that **does not join your meetings**. It
+captures audio from your machine (microphone + system audio), transcribes
+it locally on-device, identifies speakers, and uses **your own LLM
+provider** (Claude by default) for summaries and follow-up question
 suggestions.
+
+Recordings are stored as plain Markdown with YAML frontmatter — easy to
+grep, version, edit by hand, or sync to your notes app.
+
+## What's in the box
+
+| Capability | Implementation |
+|---|---|
+| Mic capture | `AVAudioEngine` (mono 16 kHz PCM WAV) |
+| System-audio capture | `ScreenCaptureKit` (macOS 13+, no BlackHole needed) |
+| On-device transcription | `WhisperKit` (Core ML / Neural Engine) |
+| Speaker diarization (optional) | Bundled Python sidecar around `pyannote.audio` |
+| Summaries + question suggestions | Anthropic API (`URLSession`, no SDK) |
+| Menubar control | `NSStatusItem` + auto-detect of Zoom/Teams/Webex |
+| Browser & editor | SwiftUI window with live transcript view + speaker rename |
+| Storage | Markdown + YAML frontmatter under `~/Library/Application Support/MeetingRecorder/meetings/` |
+
+The only outbound network call is to Anthropic, and only if you opt into
+LLM summaries.
+
+## Requirements
+
+- macOS 14 (Sonoma) or later
+- Xcode 15+ **or** Swift 5.9+ command-line toolchain
+- An Anthropic API key (optional, only for summaries / suggestions)
+- Python 3.11+ with `pyannote.audio` (optional, only for diarization)
 
 ## Quickstart
 
-### 1. Install
-
-Requires Python 3.11+. `ffmpeg` is recommended (the `doctor` command checks
-for it), but not strictly required: audio capture writes WAV directly via
-`soundfile`, and `faster-whisper` 1.x decodes audio with `pyav`. Install
-`ffmpeg` if you plan to feed in non-WAV recordings.
-
 ```bash
-# from the project root
-make install                     # creates .venv and installs the package
+# 1. Build the app
+make build-release
 
-# Optional but useful:
-make install-dev                 # adds pytest, ruff
-make install-diarization         # adds pyannote.audio + torch
-
-# Optional ffmpeg (only needed for non-WAV inputs):
-brew install ffmpeg              # macOS
-# or: sudo apt install ffmpeg
+# 2. Open it
+open mac/MeetingRecorder.app
 ```
 
-> Prefer raw commands? `python -m venv .venv && source .venv/bin/activate && pip install -e .` works too. Run `make help` to see all targets.
+That's it. On first launch the app will:
 
-### 2. Configure
+1. Ask for microphone permission.
+2. Ask for screen-recording permission (used for system audio).
+3. Drop a status icon in the menubar and open the main window.
 
-```bash
-cp .env.example .env
-# edit .env and set ANTHROPIC_API_KEY=...
-cp config.example.yaml config.yaml
-```
+The Whisper model (~150 MB for `small.en`, the default) downloads the
+first time you finalize a recording.
 
-### 2a. Verify the install
+### Anthropic API key
 
-```bash
-make doctor                      # checks ffmpeg, audio devices, API key
-make test                        # runs the storage round-trip tests
-```
+Set the key one of three ways:
 
-`doctor` will flag `ffmpeg` as missing if you skipped it; that's fine for
-the default capture-to-WAV path.
+1. **Settings → LLM → API key** (stored in the app's config file).
+2. Export `ANTHROPIC_API_KEY` in your shell, then launch the app from
+   that terminal.
+3. Put `ANTHROPIC_API_KEY=sk-…` in
+   `~/Library/Application Support/MeetingRecorder/.env`.
 
-### 3. (macOS) Enable system-audio capture (optional)
+If no key is found, the app still records and transcribes — it just
+skips the summary step.
 
-By default the recorder listens to your microphone only. To also capture the
-**other side** of a meeting (Zoom, Meet, Teams) without joining as a bot:
+### Diarization (optional)
 
-1. Install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)
-   (`brew install blackhole-2ch`).
-2. Open **Audio MIDI Setup** → create a *Multi-Output Device* combining your
-   speakers + BlackHole, set it as system output during meetings.
-3. Run `make devices` and note the BlackHole input index.
-4. Set `audio.system_device` in `config.yaml`.
-
-Linux users can use `pactl` loopback or `pavucontrol` to route a monitor source.
-Windows users can enable "Stereo Mix" or use VB-CABLE.
-
-### 4. Record
+Speaker diarization is the one piece without a good native Swift
+equivalent, so it runs as a small Python sidecar. Skip it if you don't
+need speaker labels.
 
 ```bash
-# Start a recording. Press Ctrl+C to stop.
-make record TITLE="Weekly sync with Jane"
-
-# Post-hoc question suggestions for an existing meeting (optional):
-make suggest ID=2026-05-07-1430-weekly-sync
+make install-diarization        # creates .venv, installs pyannote.audio + torch
 ```
 
-When you stop, the recorder will:
+Then in **Settings → Transcription → Diarization**:
 
-1. Save raw audio to `meetings/<id>/audio.wav`
-2. Transcribe locally
-3. Diarize and label speakers (`Speaker A`, `Speaker B`, ...)
-4. Generate a summary with Claude
-5. Write `meetings/<id>/<id>.md` with editable frontmatter
+1. Enable diarization.
+2. Set the Python interpreter path to
+   `<project-root>/.venv/bin/python3` (or leave blank to use system
+   Python).
 
-### 5. Edit & browse
+The first diarization run downloads the `pyannote/speaker-diarization-3.1`
+model and requires a one-time
+[license acceptance on Hugging Face](https://huggingface.co/pyannote/speaker-diarization-3.1).
+Set `HUGGING_FACE_HUB_TOKEN` in your `.env` after accepting.
 
-```bash
-# Open the local web UI to rename speakers, fix titles, add tags, etc.
-make serve
-# → http://localhost:8765
-```
+Without diarization, the transcript collapses to a single speaker. You
+can still rename it in the detail view.
 
-Or just edit the markdown file directly in your editor of choice.
+## Day-to-day use
+
+- **Click the menubar icon** to start, stop, or open the last meeting.
+- **`⌘N`** anywhere in the app starts a new recording.
+- **`⌘,`** opens Settings.
+- The watcher auto-prompts when a meeting app appears, and auto-stops
+  recording after 60 s of sustained silence (configurable).
+- Browser-based meetings (Google Meet, Slack huddles) aren't
+  auto-detected — start those manually from the menubar.
 
 ## Markdown format
 
@@ -124,6 +112,7 @@ speakers:
   A: Me
   B: Jane Doe
 summary_model: claude-opus-4-7
+audio_path: 2026-05-07-1430-weekly-sync/audio.wav
 ---
 
 ## Summary
@@ -136,73 +125,103 @@ summary_model: claude-opus-4-7
 
 ## Transcript
 
-**[14:30:02] Me:** Hey, thanks for hopping on…
-**[14:30:08] Jane Doe:** No problem…
+**[00:30:02] Me:** Hey, thanks for hopping on…
+**[00:30:08] Jane Doe:** No problem…
+
+<!-- meeting-recorder:utterances -->
+```yaml
+- start: 1802.5
+  end: 1804.7
+  speaker: A
+  text: Hey, thanks for hopping on
+…
+```
 ```
 
-The frontmatter is the source of truth. Renaming `B: Jane Doe` and saving will
-re-render the transcript on next load.
+The frontmatter is the source of truth. Editing speaker names in the
+markdown (or the SwiftUI detail view) and saving re-renders the
+transcript.
+
+## Building from source
+
+```bash
+make build              # debug
+make build-release      # optimized
+make build-release-signed   # release + ad-hoc codesign for local Gatekeeper
+make dmg                # release-signed + package as mac/MeetingRecorder-<version>.dmg
+make run                # build and launch
+make clean              # remove build artifacts
+```
+
+`make build*` runs `swift build` and assembles a `MeetingRecorder.app`
+bundle in `mac/`. WhisperKit and any other SwiftPM dependencies are
+fetched into `mac/.build/` on first build.
+
+If you'd rather develop in Xcode, open `mac/Package.swift` — Xcode
+treats SwiftPM packages as first-class projects (`open mac/Package.swift`).
+
+## Configuration
+
+User settings live in
+`~/Library/Application Support/MeetingRecorder/config.json` and are
+managed through **Settings**. The full schema is in
+[`mac/Sources/MeetingRecorder/Config/AppConfig.swift`](mac/Sources/MeetingRecorder/Config/AppConfig.swift).
+Defaults work for most setups; you only need to touch this file if you
+prefer editing JSON to clicking through tabs.
+
+Meetings are written to
+`~/Library/Application Support/MeetingRecorder/meetings/` by default.
+Override in **Settings → Storage**.
 
 ## Project layout
 
 ```
-src/meeting_recorder/
-├── audio/          # capture + device enumeration
-├── transcription/  # faster-whisper wrapper
-├── diarization/    # pyannote wrapper (optional)
-├── speakers/       # speaker label management
-├── llm/            # Claude client, summarize, real-time questions
-├── storage/        # markdown <-> dataclass round-trip
-├── pipeline/       # orchestrates capture → transcribe → diarize → store
-├── ui/             # FastAPI editing UI
-└── cli.py          # entry point
+mac/
+├── Package.swift                       # SwiftPM manifest (depends on WhisperKit)
+├── Sources/MeetingRecorder/
+│   ├── MeetingRecorderApp.swift        # @main
+│   ├── AppDelegate.swift               # menubar install, lifecycle
+│   ├── Audio/                          # AVAudioEngine + ScreenCaptureKit
+│   ├── Config/                         # AppConfig + ConfigStore (JSON)
+│   ├── Detection/                      # NSWorkspace-based app detection
+│   ├── Diarization/                    # Python sidecar wrapper
+│   ├── LLM/                            # Anthropic client + summarizer
+│   ├── MenuBar/                        # NSStatusItem + watcher
+│   ├── Models/                         # Meeting / Utterance Codable
+│   ├── Pipeline/                       # RecordingSession + Finalizer
+│   ├── Storage/                        # Markdown read/write
+│   ├── Transcription/                  # WhisperKit wrapper
+│   ├── ViewModels/                     # AppViewModel
+│   └── Views/                          # SwiftUI screens
+├── Resources/
+│   ├── Info.plist                      # App metadata + permission strings
+│   └── diarize_sidecar.py              # The one Python file we still need
+└── build.sh                            # SwiftPM → .app bundle
 ```
-
-Each subpackage has a single, narrow responsibility and a small public
-interface (see its `__init__.py`). Swap any of them — e.g., point
-`transcription/` at OpenAI's hosted Whisper, or replace `llm/` with a local
-model — without touching the rest.
-
-## Command reference
-
-```
-make devices                  # list audio inputs
-make record TITLE="..."       # record a meeting
-make suggest ID=<id>          # post-hoc questions for an existing meeting
-make summarize ID=<id>        # (re-)generate summary for a meeting
-make list                     # list saved meetings
-make serve                    # web UI for editing (http://localhost:8765)
-make dev                      # web UI with --reload
-make doctor                   # check ffmpeg / models / API key
-```
-
-`make help` lists every target. Each one shells out to `.venv/bin/meeting-recorder`,
-so the underlying CLI is still available if you'd rather call it directly.
-
-## Troubleshooting
-
-- **`make serve` returns HTTP 500 with `TypeError: unhashable
-  type: 'dict'`** — your `starlette` is on the new `TemplateResponse(request,
-  name, context)` signature. The shipped UI (`ui/server.py`) already uses it;
-  if you're on an older checkout, pass `request` as the first positional arg
-  to every `templates.TemplateResponse(...)` call.
-- **`pip install` fails on `pyannote.audio` / `torch`** — diarization is an
-  optional extra. Skip it (`pip install -e .` without `[diarization]`); the
-  recorder falls back to `Speaker A`, `Speaker B`, ... labels.
-- **Whisper model download is slow on first run** — `faster-whisper` lazily
-  downloads the model (`small.en` ≈ 466 MB) into the Hugging Face cache the
-  first time you `record` or `summarize`. Subsequent runs are offline.
-- **Quick repo smoke check** — `python scripts/check_setup.py` imports every
-  submodule and reports failures without touching audio devices or the LLM.
 
 ## Privacy notes
 
 - Audio never leaves your machine unless you opt into LLM summarization.
-- Transcription is fully local (`faster-whisper`).
-- Diarization is fully local (`pyannote.audio`, requires accepting their
-  Hugging Face license once).
+- Transcription is fully local (WhisperKit / Core ML).
+- Diarization, when enabled, is fully local (pyannote.audio).
 - The LLM module sends **transcript text only** — never raw audio.
-- Set `llm.enabled: false` in `config.yaml` to disable all outbound calls.
+- Disable LLM summaries entirely in Settings → LLM.
+
+## Troubleshooting
+
+- **"Operation not permitted" when starting a recording** — grant
+  microphone and screen-recording access in **System Settings → Privacy
+  & Security**. The app prompts on first launch but macOS sometimes
+  swallows the prompt; re-launch after granting.
+- **Whisper download is slow** — WhisperKit lazily fetches the model on
+  first transcription. `small.en` is ~150 MB. Subsequent runs are offline.
+- **Diarization fails with "pyannote not importable"** — install
+  `pyannote.audio` into the Python you pointed Settings at, and accept
+  the model license on Hugging Face.
+- **System audio is silent on the recording** — make sure you granted
+  screen-recording permission. Check by running
+  `tccutil reset ScreenCapture ai.checkbox.MeetingRecorder` then
+  relaunch.
 
 ## License
 
